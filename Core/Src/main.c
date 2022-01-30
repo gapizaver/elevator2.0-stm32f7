@@ -97,6 +97,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   /* USER CODE BEGIN 2 */
+  // inicializacija LCD zaslona:
   BSP_LCD_Init();
 
   BSP_LCD_LayerDefaultInit(0, LCD_FB_START_ADDRESS);
@@ -108,13 +109,61 @@ int main(void)
   ts_status = BSP_TS_ITConfig();
   while(ts_status != TS_OK);
 
-  //uint8_t strptr[] = "Vesel bozic in srecno 2022!";
-  //BSP_LCD_SetFont(&Font24);
-  //BSP_LCD_SetTextColor(LCD_COLOR_DARKBLUE);
-  //BSP_LCD_SetBackColor(LCD_COLOR_WHITE);
-  //BSP_LCD_DisplayStringAtLine(7, strptr);
+  /* izriši zaslon */
+#define NUM_BUTTONS 7
+#define BUTTON_TEXT_MAX_LENGTH 30
+
+  // struktura gumb
+typedef struct {
+	  uint16_t x;
+	  uint16_t y;
+	  uint16_t w;
+	  uint16_t h;
+	  uint8_t text[BUTTON_TEXT_MAX_LENGTH];
+	  int text_x_diff;			// razlika začetka teksta in centra gumba
+  } Button;
+
+  // array gumbov
+  Button buttons[NUM_BUTTONS] = {
+		  // prva vrsta
+		  {20, 43, 175, 175, "P", -5},
+		  {215, 43, 175, 175, "1", -5},
+		  {410, 43, 175, 175, "2", -5},
+		  {605, 43, 175, 175, "3", -5},
+		  // druga vrsta
+		  {20, 262, 175, 175, "Odpri", -45},
+		  {215, 262, 175, 175, "Zapri", -40},
+		  {410, 262, 175, 175, "Alarm", -40}
+  };
+
+  // izris gumbov
+  BSP_LCD_SetFont(&Font24);
+  BSP_LCD_SetBackColor(LCD_COLOR_DARKBLUE);
+
+  for (size_t i = 0; i < NUM_BUTTONS; i++) {
+	  // izris kvadrata
+	  BSP_LCD_SetTextColor(LCD_COLOR_DARKBLUE);			// barva kvadrata
+	  BSP_LCD_FillRect(buttons[i].x, buttons[i].y, buttons[i].w, buttons[i].h);
+
+	  // prikaži tekst gumba v sredini gumba
+	  BSP_LCD_SetTextColor(LCD_COLOR_YELLOW);		// text inside button color
+	  BSP_LCD_DisplayStringAt(
+			  buttons[i].x + buttons[i].w/2 + buttons[i].text_x_diff,
+			  buttons[i].y + buttons[i].h/2 - 7,
+			  buttons[i].text,
+			  LEFT_MODE
+	  );
+  }
+
+  /*
+  uint8_t strptr[] = "Vesel bozic in srecno 2022!";
+  BSP_LCD_SetFont(&Font24);
+  BSP_LCD_SetTextColor(LCD_COLOR_DARKBLUE);
+  BSP_LCD_SetBackColor(LCD_COLOR_WHITE);
+  BSP_LCD_DisplayStringAtLine(7, strptr);
 
   BSP_LCD_SetTextColor(LCD_COLOR_DARKRED);
+  */
   /* USER CODE END 2 */
 
   /* Init scheduler */
