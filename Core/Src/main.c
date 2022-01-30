@@ -97,11 +97,15 @@ int main(void)
 
   /* Initialize all configured peripherals */
   /* USER CODE BEGIN 2 */
+#define NUM_BUTTONS 7
+#define BUTTON_TEXT_MAX_LENGTH 30
+#define BACKGROUND_COLOR (uint32_t) 0xFF050A30
+
   // inicializacija LCD zaslona:
   BSP_LCD_Init();
 
   BSP_LCD_LayerDefaultInit(0, LCD_FB_START_ADDRESS);
-  BSP_LCD_Clear(LCD_COLOR_WHITE);
+  BSP_LCD_Clear(BACKGROUND_COLOR);
 
   ts_status = BSP_TS_Init(BSP_LCD_GetXSize(), BSP_LCD_GetYSize());
   while(ts_status != TS_OK);
@@ -110,9 +114,6 @@ int main(void)
   while(ts_status != TS_OK);
 
   /* izriši zaslon */
-#define NUM_BUTTONS 7
-#define BUTTON_TEXT_MAX_LENGTH 30
-
   // struktura gumb
 typedef struct {
 	  uint16_t x;
