@@ -29,7 +29,32 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
+#define NUM_BUTTONS 7
+#define BUTTON_TEXT_MAX_LENGTH 30
+#define BACKGROUND_COLOR (uint32_t) 0xFF050A30
 
+  // struktura gumb
+typedef struct {
+	uint16_t x;
+	uint16_t y;
+	uint16_t w;
+	uint16_t h;
+	uint8_t text[BUTTON_TEXT_MAX_LENGTH];
+	int text_x_diff;			// razlika začetka teksta in centra gumba
+} Button;
+
+// array gumbov
+Button buttons[NUM_BUTTONS] = {
+	// prva vrsta
+	{20, 43, 175, 175, "P", -5},
+	{215, 43, 175, 175, "1", -5},
+	{410, 43, 175, 175, "2", -5},
+	{605, 43, 175, 175, "3", -5},
+	// druga vrsta
+	{20, 262, 175, 175, "Odpri", -45},
+	{215, 262, 175, 175, "Zapri", -40},
+	{410, 262, 175, 175, "Alarm", -40}
+};
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -50,7 +75,15 @@ const osThreadAttr_t LCDInputTask_attributes = {
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
+
 /* USER CODE BEGIN PV */
+osThreadId_t LCDDrawTaskHandle;
+const osThreadAttr_t LCDDrawTask_attributes = {
+  .name = "LCDDrawTask",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
+};
+
 uint8_t  lcd_status = LCD_OK;
 uint32_t ts_status = TS_OK;
 TS_StateTypeDef  TS_State = {0};
@@ -58,10 +91,10 @@ TS_StateTypeDef  TS_State = {0};
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
-void LCDInputTask(void *argument);		// task za detekcijo pritiska na zaslon
 
 /* USER CODE BEGIN PFP */
-
+void LCDInputTask(void *argument);		// task za detekcijo pritiska na zaslon
+void LCDDrawTask(void *argument);		// task za izris elementov na zaslon
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -85,7 +118,9 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-
+  /* Initialize LEDs */
+  BSP_LED_Init(LED1);
+  BSP_LED_Init(LED2);
   /* USER CODE END Init */
 
   /* Configure the system clock */
@@ -97,64 +132,17 @@ int main(void)
 
   /* Initialize all configured peripherals */
   /* USER CODE BEGIN 2 */
-#define NUM_BUTTONS 7
-#define BUTTON_TEXT_MAX_LENGTH 30
-#define BACKGROUND_COLOR (uint32_t) 0xFF050A30
 
   // inicializacija LCD zaslona:
   BSP_LCD_Init();
 
   BSP_LCD_LayerDefaultInit(0, LCD_FB_START_ADDRESS);
-  BSP_LCD_Clear(BACKGROUND_COLOR);
 
   ts_status = BSP_TS_Init(BSP_LCD_GetXSize(), BSP_LCD_GetYSize());
   while(ts_status != TS_OK);
 
   ts_status = BSP_TS_ITConfig();
   while(ts_status != TS_OK);
-
-  /* izriši zaslon */
-  // struktura gumb
-typedef struct {
-	  uint16_t x;
-	  uint16_t y;
-	  uint16_t w;
-	  uint16_t h;
-	  uint8_t text[BUTTON_TEXT_MAX_LENGTH];
-	  int text_x_diff;			// razlika začetka teksta in centra gumba
-  } Button;
-
-  // array gumbov
-  Button buttons[NUM_BUTTONS] = {
-		  // prva vrsta
-		  {20, 43, 175, 175, "P", -5},
-		  {215, 43, 175, 175, "1", -5},
-		  {410, 43, 175, 175, "2", -5},
-		  {605, 43, 175, 175, "3", -5},
-		  // druga vrsta
-		  {20, 262, 175, 175, "Odpri", -45},
-		  {215, 262, 175, 175, "Zapri", -40},
-		  {410, 262, 175, 175, "Alarm", -40}
-  };
-
-  // izris gumbov
-  BSP_LCD_SetFont(&Font24);
-  BSP_LCD_SetBackColor(LCD_COLOR_DARKBLUE);
-
-  for (size_t i = 0; i < NUM_BUTTONS; i++) {
-	  // izris kvadrata
-	  BSP_LCD_SetTextColor(LCD_COLOR_DARKBLUE);			// barva kvadrata
-	  BSP_LCD_FillRect(buttons[i].x, buttons[i].y, buttons[i].w, buttons[i].h);
-
-	  // prikaži tekst gumba v sredini gumba
-	  BSP_LCD_SetTextColor(LCD_COLOR_YELLOW);		// text inside button color
-	  BSP_LCD_DisplayStringAt(
-			  buttons[i].x + buttons[i].w/2 + buttons[i].text_x_diff,
-			  buttons[i].y + buttons[i].h/2 - 7,
-			  buttons[i].text,
-			  LEFT_MODE
-	  );
-  }
 
   /*
   uint8_t strptr[] = "Vesel bozic in srecno 2022!";
@@ -189,6 +177,7 @@ typedef struct {
   /* Create the thread(s) */
   /* creation of defaultTask */
   LCDInputTaskHandle = osThreadNew(LCDInputTask, NULL, &LCDInputTask_attributes);
+  LCDDrawTaskHandle = osThreadNew(LCDDrawTask, NULL, &LCDDrawTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -286,12 +275,44 @@ void LCDInputTask(void *argument) {
   for(;;)
   {
 	BSP_TS_GetState(&TS_State);
+	/*
 	if(TS_State.touchDetected > 0) {
 		if (TS_State.touchY[0] > 30)
 		BSP_LCD_DrawCircle(TS_State.touchX[0], TS_State.touchY[0], 30);
 	}
+	*/
 	osDelay(20);
   }
+}
+
+void LCDDrawTask(void *argument) {
+	for (;;) {
+		// pobris ekrana
+		//BSP_LCD_Clear(BACKGROUND_COLOR);
+
+		// izris gumbov
+		BSP_LCD_SetFont(&Font24);
+		BSP_LCD_SetBackColor(LCD_COLOR_DARKBLUE);
+
+		for (size_t i = 0; i < NUM_BUTTONS; i++) {
+			// izris kvadrata
+			BSP_LCD_SetTextColor(LCD_COLOR_DARKBLUE);			// barva kvadrata
+			BSP_LCD_FillRect(buttons[i].x, buttons[i].y, buttons[i].w, buttons[i].h);
+
+			// prikaži tekst gumba v sredini gumba
+			BSP_LCD_SetTextColor(LCD_COLOR_YELLOW);		// text inside button color
+			BSP_LCD_DisplayStringAt(
+				  buttons[i].x + buttons[i].w/2 + buttons[i].text_x_diff,
+				  buttons[i].y + buttons[i].h/2 - 7,
+				  buttons[i].text,
+				  LEFT_MODE
+			);
+		}
+
+		BSP_LED_Toggle(LED1);
+
+		osDelay(1000);
+	}
 }
   /* USER CODE END 5 */
 
