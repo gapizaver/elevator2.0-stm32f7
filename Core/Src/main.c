@@ -25,13 +25,16 @@
 #include "stm32f769i_discovery.h"
 #include "stm32f769i_discovery_lcd.h"
 #include "stm32f769i_discovery_ts.h"
+
+#include <string.h>
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 #define NUM_BUTTONS 7
 #define BUTTON_TEXT_MAX_LENGTH 30
-#define BACKGROUND_COLOR (uint32_t) 0xFF050A30
+
 
   // struktura gumb
 typedef struct {
@@ -42,23 +45,11 @@ typedef struct {
 	uint8_t text[BUTTON_TEXT_MAX_LENGTH];
 	int text_x_diff;			// razlika začetka teksta in centra gumba
 } Button;
-
-// array gumbov
-Button buttons[NUM_BUTTONS] = {
-	// prva vrsta
-	{20, 43, 175, 175, "P", -5},
-	{215, 43, 175, 175, "1", -5},
-	{410, 43, 175, 175, "2", -5},
-	{605, 43, 175, 175, "3", -5},
-	// druga vrsta
-	{20, 262, 175, 175, "Odpri", -45},
-	{215, 262, 175, 175, "Zapri", -40},
-	{410, 262, 175, 175, "Alarm", -40}
-};
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define BACKGROUND_COLOR (uint32_t) 0xFF050A30
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -87,6 +78,28 @@ const osThreadAttr_t LCDDrawTask_attributes = {
 uint8_t  lcd_status = LCD_OK;
 uint32_t ts_status = TS_OK;
 TS_StateTypeDef  TS_State = {0};
+
+
+uint8_t floorsGoingUp = 0;					// nadstropja, ki želijo gor
+uint8_t floorsGoingDown = 0;				// nadstropja, ki želijo dol
+int direction = 1;							// smer potovanja: -1 dol, 1 gor
+uint8_t pos = 0;							// trenutno nadstropje dvigala
+int openDoorsRequest = 0;					// zahteva za odprtje vrat
+int closeDoorsRequest = 0;					// zahteva za zaprtje vrat
+int alarmRequest = 0;						// zahteva za alarm
+
+// array gumbov
+Button buttons[NUM_BUTTONS] = {
+	// prva vrsta
+	{20, 43, 175, 175, "P", -5},
+	{215, 43, 175, 175, "1", -5},
+	{410, 43, 175, 175, "2", -5},
+	{605, 43, 175, 175, "3", -5},
+	// druga vrsta
+	{20, 262, 175, 175, "Odpri", -45},
+	{215, 262, 175, 175, "Zapri", -40},
+	{410, 262, 175, 175, "Alarm", -40}
+};
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -137,6 +150,8 @@ int main(void)
   BSP_LCD_Init();
 
   BSP_LCD_LayerDefaultInit(0, LCD_FB_START_ADDRESS);
+
+  BSP_LCD_Clear(BACKGROUND_COLOR);
 
   ts_status = BSP_TS_Init(BSP_LCD_GetXSize(), BSP_LCD_GetYSize());
   while(ts_status != TS_OK);
@@ -275,12 +290,33 @@ void LCDInputTask(void *argument) {
   for(;;)
   {
 	BSP_TS_GetState(&TS_State);
-	/*
+
+	// če zaznan vsaj 1 pritisk na zlaslon
+	// poglej če je pritisnjen kateri od gumbov
 	if(TS_State.touchDetected > 0) {
-		if (TS_State.touchY[0] > 30)
-		BSP_LCD_DrawCircle(TS_State.touchX[0], TS_State.touchY[0], 30);
+		uint16_t x = TS_State.touchX[0];			// x koordinata pritiska
+		uint16_t y = TS_State.touchY[0];			// y koordinata pritiska
+
+		for (size_t i = 0; i < NUM_BUTTONS; i++) {
+			// koordinate pritiska znotraj gumba -> gumb pritisnjen
+			if ((y > buttons[i].y && y < buttons[i].y + buttons[i].h) &&
+					(x > buttons[i].x && x < buttons[i].x + buttons[i].w)) {
+				// dodaj zahtevek za nadstropje
+				if (i < NUM_BUTTONS - 3) {
+					floorsGoingUp |= (1 << i);
+					floorsGoingDown |= (1 << i);
+				} else if (i == NUM_BUTTONS - 3) {
+					openDoorsRequest = 1;
+					closeDoorsRequest = 0;
+				} else if (i == NUM_BUTTONS - 2) {
+					closeDoorsRequest = 1;
+					openDoorsRequest = 0;
+				} else if (i == NUM_BUTTONS - 1) {
+					alarmRequest = 1;
+				}
+			}
+		}
 	}
-	*/
 	osDelay(20);
   }
 }
