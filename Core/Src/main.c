@@ -68,12 +68,22 @@ const osThreadAttr_t LCDInputTask_attributes = {
 };
 
 /* USER CODE BEGIN PV */
+// Task for drawing on the LCD
 osThreadId_t LCDDrawTaskHandle;
 const osThreadAttr_t LCDDrawTask_attributes = {
   .name = "LCDDrawTask",
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
+
+// Task for communicatiion with Arduino
+osThreadId_t I2CTaskHandle;
+const osThreadAttr_t I2CTask_attributes = {
+  .name = "I2CTask",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
+};
+
 
 uint8_t  lcd_status = LCD_OK;
 uint32_t ts_status = TS_OK;
@@ -108,6 +118,7 @@ void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
 void LCDInputTask(void *argument);		// task za detekcijo pritiska na zaslon
 void LCDDrawTask(void *argument);		// task za izris elementov na zaslon
+void I2CTask(void *argument);		// task za komunikacijo z Arduinom z I2C
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -193,9 +204,10 @@ int main(void)
   /* creation of defaultTask */
   LCDInputTaskHandle = osThreadNew(LCDInputTask, NULL, &LCDInputTask_attributes);
   LCDDrawTaskHandle = osThreadNew(LCDDrawTask, NULL, &LCDDrawTask_attributes);
+  I2CTaskHandle = osThreadNew(I2CTask, NULL, &I2CTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
-  /* add threads, ... */
+
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_EVENTS */
@@ -350,6 +362,14 @@ void LCDDrawTask(void *argument) {
 		osDelay(1000);
 	}
 }
+
+void I2CTask(void *argument) {
+	for (;;) {
+		BSP_LED_Toggle(LED2);
+		osDelay(100);
+	}
+}
+
   /* USER CODE END 5 */
 
 /**
