@@ -32,7 +32,7 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-#define NUM_BUTTONS 7
+#define NUM_BUTTONS 8
 #define BUTTON_TEXT_MAX_LENGTH 30
 
 
@@ -113,9 +113,10 @@ Button buttons[NUM_BUTTONS] = {
 	{410, 43, 175, 175, "2", -5},
 	{605, 43, 175, 175, "3", -5},
 	// druga vrsta
-	{20, 262, 175, 175, "Odpri", -45},
-	{215, 262, 175, 175, "Zapri", -40},
-	{410, 262, 175, 175, "Alarm", -40}
+	{20, 262, 175, 175, "4", -5},
+	{215, 262, 175, 175, "Odpri", -45},
+	{410, 262, 175, 175, "Zapri", -40},
+	{605, 262, 175, 175, "Alarm", -40}
 };
 /* USER CODE END PV */
 
