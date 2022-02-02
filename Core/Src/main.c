@@ -68,6 +68,7 @@ const osThreadAttr_t LCDInputTask_attributes = {
 };
 
 /* USER CODE BEGIN PV */
+
 // Task for drawing on the LCD
 osThreadId_t LCDDrawTaskHandle;
 const osThreadAttr_t LCDDrawTask_attributes = {
@@ -77,9 +78,9 @@ const osThreadAttr_t LCDDrawTask_attributes = {
 };
 
 // Task for communicatiion with Arduino
-osThreadId_t I2CTaskHandle;
-const osThreadAttr_t I2CTask_attributes = {
-  .name = "I2CTask",
+osThreadId_t UARTTaskHandle;
+const osThreadAttr_t UARTTask_attributes = {
+  .name = "UARTTask",
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
@@ -90,10 +91,16 @@ uint32_t ts_status = TS_OK;
 TS_StateTypeDef  TS_State = {0};
 
 
+//UART
+UART_HandleTypeDef UartHandle;
+__IO ITStatus UartReady = RESET;
+uint8_t aRxBuffer[2];
+
+//static const uint8_t UNO_ADDR = 0;
 uint8_t floorsGoingUp = 0;					// nadstropja, ki želijo gor
 uint8_t floorsGoingDown = 0;				// nadstropja, ki želijo dol
 int direction = 1;							// smer potovanja: -1 dol, 1 gor
-uint8_t pos = 0;							// trenutno nadstropje dvigala
+uint8_t pos = 0;						// trenutno nadstropje dvigala
 int openDoorsRequest = 0;					// zahteva za odprtje vrat
 int closeDoorsRequest = 0;					// zahteva za zaprtje vrat
 int alarmRequest = 0;						// zahteva za alarm
@@ -118,7 +125,12 @@ void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
 void LCDInputTask(void *argument);		// task za detekcijo pritiska na zaslon
 void LCDDrawTask(void *argument);		// task za izris elementov na zaslon
-void I2CTask(void *argument);		// task za komunikacijo z Arduinom z I2C
+void UARTTask(void *argument);			// task za UART komunikacijo z Arduinom
+
+void PeriphCommonClock_Config(void);
+static void UART_Init(void);
+//static void CPU_CACHE_Enable(void);
+//static void MPU_Config(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -133,7 +145,8 @@ void I2CTask(void *argument);		// task za komunikacijo z Arduinom z I2C
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-
+	//MPU_Config();
+	//CPU_CACHE_Enable();
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -156,6 +169,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   /* USER CODE BEGIN 2 */
+  UART_Init();
 
   // inicializacija LCD zaslona:
   BSP_LCD_Init();
@@ -169,16 +183,6 @@ int main(void)
 
   ts_status = BSP_TS_ITConfig();
   while(ts_status != TS_OK);
-
-  /*
-  uint8_t strptr[] = "Vesel bozic in srecno 2022!";
-  BSP_LCD_SetFont(&Font24);
-  BSP_LCD_SetTextColor(LCD_COLOR_DARKBLUE);
-  BSP_LCD_SetBackColor(LCD_COLOR_WHITE);
-  BSP_LCD_DisplayStringAtLine(7, strptr);
-
-  BSP_LCD_SetTextColor(LCD_COLOR_DARKRED);
-  */
   /* USER CODE END 2 */
 
   /* Init scheduler */
@@ -204,10 +208,10 @@ int main(void)
   /* creation of defaultTask */
   LCDInputTaskHandle = osThreadNew(LCDInputTask, NULL, &LCDInputTask_attributes);
   LCDDrawTaskHandle = osThreadNew(LCDDrawTask, NULL, &LCDDrawTask_attributes);
-  I2CTaskHandle = osThreadNew(I2CTask, NULL, &I2CTask_attributes);
+  UARTTaskHandle = osThreadNew(UARTTask, NULL, &UARTTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
-
+  /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_EVENTS */
@@ -286,6 +290,24 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+static void UART_Init(void)
+{
+	UartHandle.Instance        = USART6;
+	UartHandle.Init.BaudRate   = 57600;
+	UartHandle.Init.WordLength = UART_WORDLENGTH_8B;
+	UartHandle.Init.StopBits   = UART_STOPBITS_1;
+	UartHandle.Init.Parity     = UART_PARITY_NONE;
+	UartHandle.Init.HwFlowCtl  = UART_HWCONTROL_NONE;
+	UartHandle.Init.Mode       = UART_MODE_TX_RX;
+	if(HAL_UART_DeInit(&UartHandle) != HAL_OK)
+	{
+		Error_Handler();
+	}
+	if(HAL_UART_Init(&UartHandle) != HAL_OK)
+	{
+		Error_Handler();
+	}
+}
 
 /* USER CODE END 4 */
 
@@ -363,10 +385,28 @@ void LCDDrawTask(void *argument) {
 	}
 }
 
-void I2CTask(void *argument) {
+// task za UART komunikacijo
+void UARTTask(void *argument) {
+	static uint16_t transmit_timeout = 25;
+
 	for (;;) {
+		// prenos
+		if (HAL_UART_Transmit(&UartHandle, &pos, 1, transmit_timeout) != HAL_OK){
+			// poskusi ponovno
+			continue;
+		}
+
+		// sprejem
+		if (HAL_UART_Receive(&UartHandle, aRxBuffer, 2, transmit_timeout) != HAL_OK) {
+			// poskusi ponovno
+			continue;
+		}
+
+		// preklopi LED za indikacijo uspešnega prenosa
 		BSP_LED_Toggle(LED2);
-		osDelay(100);
+
+		// počakaj 100ms pred novo iteracijo komunikacije
+		vTaskDelay(100 / portTICK_PERIOD_MS);
 	}
 }
 
