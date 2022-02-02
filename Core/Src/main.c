@@ -402,6 +402,10 @@ void UARTTask(void *argument) {
 			continue;
 		}
 
+		// dodaj prejete bufferje v lokalne zahtevke
+		floorsGoingUp 	|= aRxBuffer[0];
+		floorsGoingDown |= aRxBuffer[1];
+
 		// preklopi LED za indikacijo uspešnega prenosa
 		BSP_LED_Toggle(LED2);
 
