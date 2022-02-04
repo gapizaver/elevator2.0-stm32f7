@@ -50,6 +50,8 @@ typedef struct {
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define BACKGROUND_COLOR (uint32_t) 0xFF050A30
+#define OPEN_DOORS_WAIT		2000	// počakaj toliko ms preden zapreš vrata
+#define CLOSED_DOORS_WAIT	1000	// počakaj toliko ms preden premakneš dvigalov
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -139,6 +141,7 @@ void elevatorTask(void *argument);		// task za krmiljenje dvigala
 
 void PeriphCommonClock_Config(void);
 static void UART_Init(void);
+static void GPIO_Init(void);
 //static void CPU_CACHE_Enable(void);
 //static void MPU_Config(void);
 /* USER CODE END PFP */
@@ -180,6 +183,10 @@ int main(void)
   /* Initialize all configured peripherals */
   /* USER CODE BEGIN 2 */
   UART_Init();
+  GPIO_Init();
+  // začni z zaprtimi vrati
+  HAL_GPIO_WritePin(GPIOJ, GPIO_PIN_1, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_6, GPIO_PIN_RESET);
 
   // inicializacija LCD zaslona:
   BSP_LCD_Init();
@@ -318,6 +325,27 @@ static void UART_Init(void)
 	{
 		Error_Handler();
 	}
+}
+
+static void GPIO_Init(void)
+{
+	__HAL_RCC_GPIOJ_CLK_ENABLE();
+	__HAL_RCC_GPIOF_CLK_ENABLE();
+
+	// GPIO PJ1
+	GPIO_InitTypeDef init_structure;
+	init_structure.Pin = GPIO_PIN_1;
+	init_structure.Mode = GPIO_MODE_OUTPUT_PP;
+	init_structure.Pull = GPIO_NOPULL;
+	init_structure.Speed = GPIO_SPEED_FREQ_LOW;
+	HAL_GPIO_Init(GPIOJ, &init_structure);
+
+	// GPIO PF6
+	init_structure.Pin = GPIO_PIN_6;
+	init_structure.Mode = GPIO_MODE_OUTPUT_PP;
+	init_structure.Pull = GPIO_NOPULL;
+	init_structure.Speed = GPIO_SPEED_FREQ_LOW;
+	HAL_GPIO_Init(GPIOF, &init_structure);
 }
 
 /* USER CODE END 4 */
@@ -466,23 +494,32 @@ void elevatorTask(void *argument) {
 
 		// pozicijo dvigala povečaj/zmanjšaj za smer (-1, 1)
 		pos += direction;
-		// pobriši zahtevke za to nadstropje
-		floorsGoingUp &= ~(1 << pos);
-		floorsGoingDown &= ~(1 << pos);
 	}
 
-	// avtomat stanj
+	int needToOpenDoors() {
+		// zahtevano odprtje vrat ali zahteva od zunaj za smer dvigala
+		return 	openDoorsRequest 									||
+				(direction == 1 && (floorsGoingUp & (1 << pos)))	||
+				(direction == -1 && (floorsGoingDown & (1 << pos)));
+	}
+
+	/* avtomat stanj */
 	// STANJA:
 	// 0 - dvigalo ima v smeri premika zahtevke v isti smeri
 	// 1 - dvigal v smeri premika nima zahtevka za v isto smer, ima pa za v nasprotno
 	// 2 - zamenjaj smer dvigala
+	// 3 - odprianje in zapiranje vrat
 	int state = 2;
+	int previous_state = 2;
 
 	for (;;) {
 		// prehodi stanj
 		if (state == 0) {
+			if (needToOpenDoors()) {
+				state = 3;
+			}
 			// dvigalo ima smer gor
-			if (direction == 1) {
+			else if (direction == 1) {
 				// dvigalo na poti nima zahtevo za gor
 				if (getLowestSetBit(floorsGoingUp, pos) < 0) {
 					state = 1;	// pojdi v stanje 1
@@ -496,21 +533,27 @@ void elevatorTask(void *argument) {
 				}
 			}
 		} else if (state == 1) {
+			if (needToOpenDoors()) {
+				state = 3;
+			}
 			// dvigalo ima smer gor
-			if (direction == 1) {
+			else if (direction == 1) {
 				// dvigalo na poti nima zahtevo za dol
-				if (getHighestSetBit(floorsGoingDown, pos) < 0) {
+				if (getLowestSetBit(floorsGoingDown, pos) < 0) {
 					state = 2;	// pojdi v stanje 2
 				}
 			} else {
 				// dvigalo se premika dol in na poti nima zahteve za gor
-				if (getLowestSetBit(floorsGoingUp, pos) < 0) {
+				if (getHighestSetBit(floorsGoingUp, pos) < 0) {
 					state = 2; 	// ne spremeni stanja
 				}
 			}
 		} else if (state == 2) {
+			if (needToOpenDoors()) {
+				state = 3;
+			}
 			// dvigalo ima smer gor
-			if (direction == 1) {
+			else if (direction == 1) {
 				// dvigalo ima na poti zahtevo za gor
 				if (getLowestSetBit(floorsGoingUp, pos) >= 0) {
 					state = 0;	// pojdi v stanje 0
@@ -531,18 +574,51 @@ void elevatorTask(void *argument) {
 					state = 1;
 				}
 			}
+		} else if (state == 3) {
+			// vrni se v prejšnje stanje
+			if (previous_state == 0) {
+				state = 0;
+			} else if (previous_state == 1) {
+				state = 1;
+			} else if (previous_state == 2) {
+				state = 2;
+			}
 		}
 
 		// izhodi stanj
 		if (state == 0) {
 			// sicer premakni dvigalo
 			elevatorMove();
+			previous_state = 0;
 		} else if (state == 1) {
 			// sicer premakni dvigalo
 			elevatorMove();
+			previous_state = 1;
 		} else if (state == 2) {
 			// premakni dvigalo
 			direction *= -1;
+			previous_state = 2;
+		} else {
+			// odpri in zapri vrata
+			// pobriši zahtevke za to nadstropje
+			floorsGoingUp &= ~(1 << pos);
+			floorsGoingDown &= ~(1 << pos);
+
+			// pobriši zahtevo za odpiranje in zapiranje vrat (zapremo lahko le odprta vrata)
+			openDoorsRequest = 0;
+			closeDoorsRequest = 0;
+
+			// odpri vrata
+			HAL_GPIO_WritePin(GPIOJ, GPIO_PIN_1, GPIO_PIN_RESET);
+			HAL_GPIO_WritePin(GPIOF, GPIO_PIN_6, GPIO_PIN_SET);
+			// počakaj
+			vTaskDelay(OPEN_DOORS_WAIT / portTICK_PERIOD_MS);
+
+			// zapri vrata
+			HAL_GPIO_WritePin(GPIOJ, GPIO_PIN_1, GPIO_PIN_SET);
+			HAL_GPIO_WritePin(GPIOF, GPIO_PIN_6, GPIO_PIN_RESET);
+			// počakaj
+			vTaskDelay(CLOSED_DOORS_WAIT / portTICK_PERIOD_MS);
 		}
 	}
 }
