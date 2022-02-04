@@ -402,7 +402,9 @@ void LCDInputTask(void *argument) {
 
 void LCDDrawTask(void *argument) {
 	for (;;) {
+		taskENTER_CRITICAL();
 		ct_screen_flip_buffers(screen);
+		taskEXIT_CRITICAL();
 		// pobris ekrana
 		BSP_LCD_Clear(BACKGROUND_COLOR);
 
@@ -426,26 +428,30 @@ void LCDDrawTask(void *argument) {
 		}
 
 		// delay za 25 FPS
-		vTaskDelay(40 / portTICK_PERIOD_MS);
+		vTaskDelay(1000 / portTICK_PERIOD_MS);
 	}
 }
 
 // task za UART komunikacijo
 void UARTTask(void *argument) {
-	static uint16_t transmit_timeout = 25;
+	static uint16_t transmit_timeout = 10000;
 
 	for (;;) {
+		taskENTER_CRITICAL();
 		// prenos
 		if (HAL_UART_Transmit(&UartHandle, &pos, 1, transmit_timeout) != HAL_OK){
 			// poskusi ponovno
+			vTaskDelay(1000 / portTICK_PERIOD_MS);
 			continue;
 		}
 
 		// sprejem
 		if (HAL_UART_Receive(&UartHandle, aRxBuffer, 2, transmit_timeout) != HAL_OK) {
 			// poskusi ponovno
+			vTaskDelay(1000 / portTICK_PERIOD_MS);
 			continue;
 		}
+		taskEXIT_CRITICAL();
 
 		// dodaj prejete bufferje v lokalne zahtevke
 		floorsGoingUp 	|= aRxBuffer[0];
