@@ -578,8 +578,10 @@ void elevatorTask(void *argument) {
 			// vrni se v prejšnje stanje
 			if (previous_state == 0) {
 				state = 0;
+				continue;
 			} else if (previous_state == 1) {
 				state = 1;
+				continue;
 			} else if (previous_state == 2) {
 				state = 2;
 			}
@@ -600,6 +602,9 @@ void elevatorTask(void *argument) {
 			previous_state = 2;
 		} else {
 			// odpri in zapri vrata
+			// zaradi neznanega razloga se vrata odprejo 2x brez tega delay-a
+			vTaskDelay(100 / portTICK_PERIOD_MS);
+
 			// pobriši zahtevke za to nadstropje
 			floorsGoingUp &= ~(1 << pos);
 			floorsGoingDown &= ~(1 << pos);
