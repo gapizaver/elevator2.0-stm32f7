@@ -25,6 +25,7 @@
 #include "stm32f769i_discovery.h"
 #include "stm32f769i_discovery_lcd.h"
 #include "stm32f769i_discovery_ts.h"
+#include "screen.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -114,6 +115,7 @@ uint8_t pos = 0;						// trenutno nadstropje dvigala
 int openDoorsRequest = 0;					// zahteva za odprtje vrat
 int closeDoorsRequest = 0;					// zahteva za zaprtje vrat
 int alarmRequest = 0;						// zahteva za alarm
+static Screen *screen;
 
 // array gumbov
 Button buttons[NUM_BUTTONS] = {
@@ -189,9 +191,11 @@ int main(void)
   HAL_GPIO_WritePin(GPIOF, GPIO_PIN_6, GPIO_PIN_RESET);
 
   // inicializacija LCD zaslona:
-  BSP_LCD_Init();
+  /*BSP_LCD_Init();
 
   BSP_LCD_LayerDefaultInit(0, LCD_FB_START_ADDRESS);
+  */
+  screen = ct_screen_init();
 
   BSP_LCD_Clear(BACKGROUND_COLOR);
 
@@ -200,6 +204,8 @@ int main(void)
 
   ts_status = BSP_TS_ITConfig();
   while(ts_status != TS_OK);
+
+
   /* USER CODE END 2 */
 
   /* Init scheduler */
@@ -396,8 +402,9 @@ void LCDInputTask(void *argument) {
 
 void LCDDrawTask(void *argument) {
 	for (;;) {
+		ct_screen_flip_buffers(screen);
 		// pobris ekrana
-		//BSP_LCD_Clear(BACKGROUND_COLOR);
+		BSP_LCD_Clear(BACKGROUND_COLOR);
 
 		// izris gumbov
 		BSP_LCD_SetFont(&Font24);
@@ -418,9 +425,8 @@ void LCDDrawTask(void *argument) {
 			);
 		}
 
-		//BSP_LED_Toggle(LED1);
-
-		osDelay(1000);
+		// delay za 25 FPS
+		vTaskDelay(40 / portTICK_PERIOD_MS);
 	}
 }
 
