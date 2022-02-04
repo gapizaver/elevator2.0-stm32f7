@@ -85,6 +85,14 @@ const osThreadAttr_t UARTTask_attributes = {
   .priority = (osPriority_t) osPriorityNormal,
 };
 
+// Task for controlling the elevator
+osThreadId_t elevatorTaskHandle;
+const osThreadAttr_t elevatorTask_attributes = {
+  .name = "elevatorTask",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
+};
+
 
 uint8_t  lcd_status = LCD_OK;
 uint32_t ts_status = TS_OK;
@@ -99,7 +107,7 @@ uint8_t aRxBuffer[2];
 //static const uint8_t UNO_ADDR = 0;
 uint8_t floorsGoingUp = 0;					// nadstropja, ki želijo gor
 uint8_t floorsGoingDown = 0;				// nadstropja, ki želijo dol
-int direction = 1;							// smer potovanja: -1 dol, 1 gor
+int8_t direction = 1;							// smer potovanja: -1 dol, 1 gor
 uint8_t pos = 0;						// trenutno nadstropje dvigala
 int openDoorsRequest = 0;					// zahteva za odprtje vrat
 int closeDoorsRequest = 0;					// zahteva za zaprtje vrat
@@ -127,6 +135,7 @@ void SystemClock_Config(void);
 void LCDInputTask(void *argument);		// task za detekcijo pritiska na zaslon
 void LCDDrawTask(void *argument);		// task za izris elementov na zaslon
 void UARTTask(void *argument);			// task za UART komunikacijo z Arduinom
+void elevatorTask(void *argument);		// task za krmiljenje dvigala
 
 void PeriphCommonClock_Config(void);
 static void UART_Init(void);
@@ -210,6 +219,7 @@ int main(void)
   LCDInputTaskHandle = osThreadNew(LCDInputTask, NULL, &LCDInputTask_attributes);
   LCDDrawTaskHandle = osThreadNew(LCDDrawTask, NULL, &LCDDrawTask_attributes);
   UARTTaskHandle = osThreadNew(UARTTask, NULL, &UARTTask_attributes);
+  elevatorTaskHandle = osThreadNew(elevatorTask, NULL, &elevatorTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -380,7 +390,7 @@ void LCDDrawTask(void *argument) {
 			);
 		}
 
-		BSP_LED_Toggle(LED1);
+		//BSP_LED_Toggle(LED1);
 
 		osDelay(1000);
 	}
@@ -412,6 +422,128 @@ void UARTTask(void *argument) {
 
 		// počakaj 100ms pred novo iteracijo komunikacije
 		vTaskDelay(100 / portTICK_PERIOD_MS);
+	}
+}
+
+// task za krmiljenje dvigala
+void elevatorTask(void *argument) {
+	// vrni prvi prižgani bit (LSB->MSB)
+	int getLowestSetBit(uint8_t num, int min) {
+		if (num == 0) {
+			return -1;
+		} else  {
+			for(int i=min+1; i<16; i++) {
+				if ((num >> i) & 1){
+					return i;
+				}
+			}
+			return -1;
+		}
+	}
+
+	// vrni zadnji prižgani bit (LSB->MSB)
+	int getHighestSetBit(uint8_t num, int max) {
+		if (num == 0) {
+			return -1;
+		}
+
+		int result = -1;
+		for(int i=0; i<max; i++) {
+			if ((num >> i) & 1){
+				if (i > result) {
+					result = i;
+				}
+			}
+		}
+
+		return result;
+	}
+
+	// premakni dvigalo v smeri
+	void elevatorMove() {
+		// počakaj nekaj časa
+		vTaskDelay(1000 / portTICK_PERIOD_MS);
+
+		// pozicijo dvigala povečaj/zmanjšaj za smer (-1, 1)
+		pos += direction;
+		// pobriši zahtevke za to nadstropje
+		floorsGoingUp &= ~(1 << pos);
+		floorsGoingDown &= ~(1 << pos);
+	}
+
+	// avtomat stanj
+	// STANJA:
+	// 0 - dvigalo ima v smeri premika zahtevke v isti smeri
+	// 1 - dvigal v smeri premika nima zahtevka za v isto smer, ima pa za v nasprotno
+	// 2 - zamenjaj smer dvigala
+	int state = 2;
+
+	for (;;) {
+		// prehodi stanj
+		if (state == 0) {
+			// dvigalo ima smer gor
+			if (direction == 1) {
+				// dvigalo na poti nima zahtevo za gor
+				if (getLowestSetBit(floorsGoingUp, pos) < 0) {
+					state = 1;	// pojdi v stanje 1
+					continue;
+				}
+			} else {
+				// dvigalo se pomika dol in na poti nima zahtev za dol
+				if (getHighestSetBit(floorsGoingDown, pos) < 0) {
+					state = 1;	// pojdi v stanje 1
+					continue;
+				}
+			}
+		} else if (state == 1) {
+			// dvigalo ima smer gor
+			if (direction == 1) {
+				// dvigalo na poti nima zahtevo za dol
+				if (getHighestSetBit(floorsGoingDown, pos) < 0) {
+					state = 2;	// pojdi v stanje 2
+				}
+			} else {
+				// dvigalo se premika dol in na poti nima zahteve za gor
+				if (getLowestSetBit(floorsGoingUp, pos) < 0) {
+					state = 2; 	// ne spremeni stanja
+				}
+			}
+		} else if (state == 2) {
+			// dvigalo ima smer gor
+			if (direction == 1) {
+				// dvigalo ima na poti zahtevo za gor
+				if (getLowestSetBit(floorsGoingUp, pos) >= 0) {
+					state = 0;	// pojdi v stanje 0
+				}
+				// dvigalo ima na poti zahtevo za gor
+				if (getLowestSetBit(floorsGoingDown, pos) >= 0) {
+					state = 1;
+				}
+			}
+			// dvigalo ima smer dol
+			else {
+				// dvigalo ima na poti zahtev za dol
+				if (getHighestSetBit(floorsGoingDown, pos) >= 0) {
+					state = 0;	// pojdi v stanje 0
+				}
+				// divgalo ima na poti zahtevo za gor
+				if (getHighestSetBit(floorsGoingUp, pos) >= 0) {
+					state = 1;
+				}
+			}
+		}
+
+		// izhodi stanj
+		if (state == 0) {
+			// sicer premakni dvigalo
+			elevatorMove();
+		} else if (state == 1) {
+			// sicer premakni dvigalo
+			elevatorMove();
+		} else if (state == 2) {
+			// premakni dvigalo
+			direction *= -1;
+		}
 	}
 }
 
