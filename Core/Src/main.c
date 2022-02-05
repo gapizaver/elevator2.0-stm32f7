@@ -377,7 +377,9 @@ void LCDInputTask(void *argument) {
 		uint16_t x = TS_State.touchX[0];			// x koordinata pritiska
 		uint16_t y = TS_State.touchY[0];			// y koordinata pritiska
 
-		for (size_t i = 0; i < NUM_BUTTONS; i++) {
+		// za vsak gumb (razen zadnjega, ki je namenjen prikazu nadstropja)
+		// preveri ali je pritisnjen
+		for (size_t i = 0; i < NUM_BUTTONS-1; i++) {
 			// koordinate pritiska znotraj gumba -> gumb pritisnjen
 			if ((y > buttons[i].y && y < buttons[i].y + buttons[i].h) &&
 					(x > buttons[i].x && x < buttons[i].x + buttons[i].w)) {
@@ -392,7 +394,15 @@ void LCDInputTask(void *argument) {
 					closeDoorsRequest = 1;
 					openDoorsRequest = 0;
 				}
+
+				// spremeni barvo gumba
+				buttons[i].background_color = BACKGROUND_COLOR;
 			}
+		}
+	} else {
+		// če ni zaznanega toucha nastavi prvotno barvo gumbom
+		for (size_t i = 0; i < NUM_BUTTONS-1; i++) {
+			buttons[i].background_color = LCD_COLOR_DARKBLUE;
 		}
 	}
 	osDelay(20);
