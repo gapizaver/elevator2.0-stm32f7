@@ -621,6 +621,7 @@ void elevatorTask(void *argument) {
 			previous_state = 2;
 		} else {
 			// odpri in zapri vrata
+opening_doors:
 			// zaradi neznanega razloga se vrata odprejo 2x brez tega delay-a
 			vTaskDelay(100 / portTICK_PERIOD_MS);
 
@@ -635,14 +636,28 @@ void elevatorTask(void *argument) {
 			// odpri vrata
 			HAL_GPIO_WritePin(GPIOJ, GPIO_PIN_1, GPIO_PIN_RESET);
 			HAL_GPIO_WritePin(GPIOF, GPIO_PIN_6, GPIO_PIN_SET);
-			// počakaj
-			vTaskDelay(OPEN_DOORS_WAIT / portTICK_PERIOD_MS);
+			// odpiraj vrata (počakaj)
+			for (size_t i = 0; i < 10; i++) {
+				vTaskDelay((OPEN_DOORS_WAIT / 10) / portTICK_PERIOD_MS);
+				// sproti preverjaj če zahteva za zaprtje vrat
+				if (closeDoorsRequest) {
+					break;
+				} else if (openDoorsRequest) {
+					goto opening_doors;
+				}
+			}
 
 			// zapri vrata
 			HAL_GPIO_WritePin(GPIOJ, GPIO_PIN_1, GPIO_PIN_SET);
 			HAL_GPIO_WritePin(GPIOF, GPIO_PIN_6, GPIO_PIN_RESET);
-			// počakaj
-			vTaskDelay(CLOSED_DOORS_WAIT / portTICK_PERIOD_MS);
+			// zapiraj vrata (počakaj)
+			for (size_t i = 0; i < 10; i++) {
+				vTaskDelay((CLOSED_DOORS_WAIT / 10) / portTICK_PERIOD_MS);
+				// sproti preverjaj če zahteva za odprtje vrat
+				if (openDoorsRequest) {
+					goto opening_doors;
+				}
+			}
 		}
 	}
 }
