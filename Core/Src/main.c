@@ -45,6 +45,8 @@ typedef struct {
 	uint16_t h;
 	uint8_t text[BUTTON_TEXT_MAX_LENGTH];
 	int text_x_diff;			// razlika začetka teksta in centra gumba
+	uint32_t background_color;
+	uint32_t text_color;
 } Button;
 /* USER CODE END PTD */
 
@@ -114,21 +116,20 @@ int8_t direction = 1;							// smer potovanja: -1 dol, 1 gor
 uint8_t pos = 0;						// trenutno nadstropje dvigala
 int openDoorsRequest = 0;					// zahteva za odprtje vrat
 int closeDoorsRequest = 0;					// zahteva za zaprtje vrat
-int alarmRequest = 0;						// zahteva za alarm
 static Screen *screen;
 
 // array gumbov
 Button buttons[NUM_BUTTONS] = {
 	// prva vrsta
-	{20, 43, 175, 175, "P", -5},
-	{215, 43, 175, 175, "1", -5},
-	{410, 43, 175, 175, "2", -5},
-	{605, 43, 175, 175, "3", -5},
+	{20,  43,  175, 175, "P", 	  -5,  LCD_COLOR_DARKBLUE, LCD_COLOR_YELLOW},
+	{215, 43,  175, 175, "1", 	  -5,  LCD_COLOR_DARKBLUE, LCD_COLOR_YELLOW},
+	{410, 43,  175, 175, "2", 	  -5,  LCD_COLOR_DARKBLUE, LCD_COLOR_YELLOW},
+	{605, 43,  175, 175, "3",	  -5,  LCD_COLOR_DARKBLUE, LCD_COLOR_YELLOW},
 	// druga vrsta
-	{20, 262, 175, 175, "4", -5},
-	{215, 262, 175, 175, "Odpri", -45},
-	{410, 262, 175, 175, "Zapri", -40},
-	{605, 262, 175, 175, "Alarm", -40}
+	{20,  262, 175, 175, "4", 	  -5,  LCD_COLOR_DARKBLUE, LCD_COLOR_YELLOW},
+	{215, 262, 175, 175, "Odpri", -45, LCD_COLOR_DARKBLUE, LCD_COLOR_YELLOW},
+	{410, 262, 175, 175, "Zapri", -40, LCD_COLOR_DARKBLUE, LCD_COLOR_YELLOW},
+	{605, 262, 175, 175, "P",     -5,  LCD_COLOR_YELLOW,   LCD_COLOR_DARKBLUE}
 };
 /* USER CODE END PV */
 
@@ -390,8 +391,6 @@ void LCDInputTask(void *argument) {
 				} else if (i == NUM_BUTTONS - 2) {
 					closeDoorsRequest = 1;
 					openDoorsRequest = 0;
-				} else if (i == NUM_BUTTONS - 1) {
-					alarmRequest = 1;
 				}
 			}
 		}
@@ -405,20 +404,20 @@ void LCDDrawTask(void *argument) {
 		taskENTER_CRITICAL();
 		ct_screen_flip_buffers(screen);
 		taskEXIT_CRITICAL();
+
 		// pobris ekrana
 		BSP_LCD_Clear(BACKGROUND_COLOR);
 
 		// izris gumbov
 		BSP_LCD_SetFont(&Font24);
-		BSP_LCD_SetBackColor(LCD_COLOR_DARKBLUE);
-
 		for (size_t i = 0; i < NUM_BUTTONS; i++) {
 			// izris kvadrata
-			BSP_LCD_SetTextColor(LCD_COLOR_DARKBLUE);			// barva kvadrata
+			BSP_LCD_SetTextColor(buttons[i].background_color);	// barva kvadrata
 			BSP_LCD_FillRect(buttons[i].x, buttons[i].y, buttons[i].w, buttons[i].h);
 
 			// prikaži tekst gumba v sredini gumba
-			BSP_LCD_SetTextColor(LCD_COLOR_YELLOW);		// text inside button color
+			BSP_LCD_SetTextColor(buttons[i].text_color);		// text inside button color
+			BSP_LCD_SetBackColor(buttons[i].background_color);	// barva ozadja teksta
 			BSP_LCD_DisplayStringAt(
 				  buttons[i].x + buttons[i].w/2 + buttons[i].text_x_diff,
 				  buttons[i].y + buttons[i].h/2 - 7,
@@ -427,8 +426,8 @@ void LCDDrawTask(void *argument) {
 			);
 		}
 
-		// delay za 25 FPS
-		vTaskDelay(1000 / portTICK_PERIOD_MS);
+		// delay za 20 FPS
+		vTaskDelay(50 / portTICK_PERIOD_MS);
 	}
 }
 
@@ -506,6 +505,14 @@ void elevatorTask(void *argument) {
 
 		// pozicijo dvigala povečaj/zmanjšaj za smer (-1, 1)
 		pos += direction;
+		// posodobi vrednost, ki je prikazana na LCD
+		if (pos == 0) {
+			// pritličje
+			buttons[7].text[0] = 'P';
+		} else {
+			// spremeni število v ascii znak
+			buttons[7].text[0] = pos + 0x30;
+		}
 	}
 
 	int needToOpenDoors() {
